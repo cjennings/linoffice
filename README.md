@@ -261,7 +261,7 @@ Some users have reported the issue that when they try to log in to Microsoft (e.
 
 In my experience, window management can be wonky, particularly if you're using Wayland instead of X11 or if you're using multiple monitors.
 
-A potential solution for multimonitor issues could be to open the file `config/linoffice.conf` and in the last line (`RDP_FLAGS`) adding `/multimon`. This is supposed to add multimonitor support to FreeRDP, but a FreeRDP bug may result in a black screen, in which case you should revert this change.
+A potential solution for multimonitor issues could be to open the file `config/linoffice.conf` and in the last line (`RDP_FLAGS`) adding `/multimon`. This is supposed to add multimonitor support to FreeRDP, but a FreeRDP bug may result in a black screen, in which case you should revert this change. Another potential solution is to add `/monitors:1` or `/monitors:0` to the `RDP_FLAGS` line in `linoffice.conf`, where the monitor ID is based on your "desired" monitor that the apps will run in;  while it restricts the Office windows to this desktop you should avoid the windows being unresponsive or disappearing and resizing works properly within this monitor.
 
 <details><summary>Examples</summary>
     
