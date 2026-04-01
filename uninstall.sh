@@ -40,6 +40,51 @@ show_manual_uninstall() {
   echo "Please run as root (su) and remove the packages manually."
 }
 
+print_system_pkg_manual_commands() {
+  local pm_key="$1"
+  shift
+  local packages=("$@")
+
+  if [[ ${#packages[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo ""
+  echo "System package cleanup is disabled by default for safety."
+  echo "Selected packages (review carefully): ${packages[*]}"
+  echo "Suggested manual command (non-recursive):"
+  case "$pm_key" in
+    apt)
+      echo "  sudo apt-get remove ${packages[*]}"
+      ;;
+    dnf)
+      echo "  sudo dnf remove ${packages[*]}"
+      ;;
+    yum)
+      echo "  sudo yum remove ${packages[*]}"
+      ;;
+    zypper)
+      echo "  sudo zypper remove ${packages[*]}"
+      ;;
+    pacman)
+      echo "  sudo pacman -R ${packages[*]}"
+      ;;
+    xbps-install)
+      echo "  sudo xbps-remove ${packages[*]}"
+      ;;
+    eopkg)
+      echo "  sudo eopkg remove ${packages[*]}"
+      ;;
+    urpmi)
+      echo "  sudo urpme ${packages[*]}"
+      ;;
+    *)
+      echo "  Unknown package manager: $pm_key"
+      ;;
+  esac
+  echo "Tip: run a dry-run first where supported (for apt: sudo apt-get -s remove ...)."
+}
+
 # Find .desktop files containing linoffice.sh in Exec= line
 if [[ -n "$USER_APPLICATIONS_DIR" ]]; then
   DESKTOP_FILES=$(find "$USER_APPLICATIONS_DIR" -type f -name "*.desktop" -exec grep -l "Exec=.*linoffice.sh" {} \;)
@@ -90,6 +135,28 @@ if [[ -n "$INSTALLED_DEPS_FILE" ]]; then
   PIP_LINE=$(grep -E '^pip=' "$INSTALLED_DEPS_FILE" | sed -E 's/^pip=//; s/^"//; s/"$//' || true)
   FLATPAK_USER=$(grep -E '^flatpak_user=' "$INSTALLED_DEPS_FILE" | tail -n1 | cut -d= -f2 2>/dev/null || echo 0)
   PIP_VENV=$(grep -E '^pip_venv=' "$INSTALLED_DEPS_FILE" | tail -n1 | cut -d= -f2 2>/dev/null || echo 0)
+
+  # Offer exporting recorded system dependency package list to a file in home dir
+  if [[ -n "$PM_LINE" ]]; then
+    PM_KEY=${PM_LINE%%=*}
+    PM_PKGS_RAW=$(echo "$PM_LINE" | sed -E 's/^[^=]+=//; s/^"//; s/"$//')
+    if [[ -n "$PM_PKGS_RAW" ]]; then
+      read -p "Do you want to export a list of packages that were installed by the LinOffice Quickstart script to a text file in your home directory? This will allow you to uninstall them manually if you wish to. (y/n): " confirm
+      if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+        OUTPUT_FILE="$HOME/linoffice-installed-dependencies-$(date +%Y%m%d-%H%M%S).txt"
+        {
+          echo "Generated: $(date -Is)"
+          echo ""
+          for pkg in $PM_PKGS_RAW; do
+            echo "$pkg"
+          done
+        } > "$OUTPUT_FILE"
+        echo "Saved list of installed dependencies to: $OUTPUT_FILE"
+      else
+        echo "Skipping."
+      fi
+    fi
+  fi
 
   # Clean up virtual environment if used
   if [[ "$PIP_VENV" == "1" ]]; then
@@ -169,42 +236,13 @@ if [[ -n "$INSTALLED_DEPS_FILE" ]]; then
       done
 
       if [[ ${#SELECTED_PKGS[@]} -gt 0 ]]; then
-        # Check if sudo is available
+        echo ""
+        echo "WARNING: Automatic system package removal is disabled to prevent accidental desktop/system breakage."
+        echo "No system packages were removed."
         if ! check_sudo; then
           show_manual_uninstall "${SELECTED_PKGS[@]}"
-        else 
-          echo "Removing selected packages via $PM_KEY: ${SELECTED_PKGS[*]}"
-          case "$PM_KEY" in
-            apt)
-              sudo apt-get purge -y "${SELECTED_PKGS[@]}" || true
-              sudo apt-get autoremove -y || true
-              ;;
-            dnf)
-              sudo dnf remove -y "${SELECTED_PKGS[@]}" || true
-              ;;
-            yum)
-              sudo yum remove -y "${SELECTED_PKGS[@]}" || true
-              ;;
-            zypper)
-              sudo zypper --non-interactive remove --clean-deps "${SELECTED_PKGS[@]}" || true
-              ;;
-            pacman)
-              sudo pacman -Rs --noconfirm "${SELECTED_PKGS[@]}" || true
-              ;;
-            xbps-install)
-              sudo xbps-remove -R "${SELECTED_PKGS[@]}" || true
-              ;;
-            eopkg)
-              sudo eopkg remove -y "${SELECTED_PKGS[@]}" || true
-              ;;
-            urpmi)
-              sudo urpme "${SELECTED_PKGS[@]}" || true
-              ;;
-            *)
-              echo "Unknown package manager key: $PM_KEY"
-              ;;
-          esac
         fi
+        print_system_pkg_manual_commands "$PM_KEY" "${SELECTED_PKGS[@]}"
       else
         echo "No system packages selected for removal."
       fi

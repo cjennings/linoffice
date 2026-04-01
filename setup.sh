@@ -295,6 +295,14 @@ function detect_freerdp_command() {
     fi
 }
 
+function flatpak_freerdp_has_home_access() {
+    # Check for "home" token in the filesystems permission list.
+    # Matches formats such as home, home:ro, and entries in semicolon-separated lists.
+    local permissions
+    permissions=$(flatpak info --show-permissions com.freerdp.FreeRDP 2>/dev/null || true)
+    echo "$permissions" | grep -Eq 'filesystems=.*(^|[;[:space:]])home(:[a-z]+)?([;[:space:]]|$)'
+}
+
 # Function to check if all requirements are met to run the Windows VM in Podman
 function check_requirements() {
 
@@ -533,15 +541,32 @@ function check_requirements() {
             FREERDP_MAJOR_VERSION=$(xfreerdp3 --version | head -n 1 | grep -o -m 1 '\b[0-9]\S*' | head -n 1 | cut -d'.' -f1)
         elif [ "$FREERDP_COMMAND" = "flatpak run --command=xfreerdp com.freerdp.FreeRDP" ]; then
             FREERDP_MAJOR_VERSION=$(flatpak list --columns=application,version | grep "^com.freerdp.FreeRDP" | awk '{print $2}' | cut -d'.' -f1)
-            # Check if Flatpak has access to /home
-            if ! flatpak info --show-permissions com.freerdp.FreeRDP | grep -q "filesystems=.*home"; then
-                exit_with_error "Flatpak FreeRDP does not have access to /home directory.
-                
-                HOW TO FIX:
-                1. Close any running FreeRDP instances
-                2. Run this command to grant access:
-                   flatpak override --user --filesystem=home com.freerdp.FreeRDP
-                3. Run this setup script again"
+            # Ensure Flatpak FreeRDP has access to /home.
+            if ! flatpak_freerdp_has_home_access; then
+                print_info "Flatpak FreeRDP does not currently have /home access. Attempting to apply user override..."
+                if ! flatpak override --user --filesystem=home com.freerdp.FreeRDP >/dev/null 2>&1; then
+                    exit_with_error "Failed to grant Flatpak FreeRDP access to /home automatically.
+
+                    HOW TO FIX:
+                    1. Close any running FreeRDP instances
+                    2. Run this command manually:
+                       flatpak override --user --filesystem=home com.freerdp.FreeRDP
+                    3. Run this setup script again"
+                fi
+
+                if ! flatpak_freerdp_has_home_access; then
+                    exit_with_error "Flatpak FreeRDP still does not have access to /home directory.
+                    
+                    HOW TO FIX:
+                    1. Close any running FreeRDP instances
+                    2. Run this command manually:
+                       flatpak override --user --filesystem=home com.freerdp.FreeRDP
+                    3. Verify permissions:
+                       flatpak info --show-permissions com.freerdp.FreeRDP
+                    4. Run this setup script again"
+                fi
+
+                print_success "Granted Flatpak FreeRDP access to /home."
             fi
         fi
         if [[ ! $FREERDP_MAJOR_VERSION =~ ^[0-9]+$ ]] || ((FREERDP_MAJOR_VERSION < 3)); then
